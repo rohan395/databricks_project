@@ -1,0 +1,47 @@
+# Replace with your storage account and SAS token details
+storage_account_name = "test1244"
+sas_token = "sv=2022-11-02&ss=bfqt&srt=sco&sp=rwdlacupyx&se=2024-12-26T20:05:28Z&st=2024-12-04T12:05:28Z&spr=https,http&sig=lJSVQOYvWg5r%2BYzSDpzz8DheOybedXeTY5EzVO57OkI%3D"
+container_name = "test"
+
+# Mount the storage account to Databricks
+dbutils.fs.mount(
+    source=f"wasbs://{container_name}@{storage_account_name}.blob.core.windows.net",
+    mount_point=f"/mnt/{container_name}",
+    extra_configs={f"fs.azure.sas.{container_name}.{storage_account_name}.blob.core.windows.net": sas_token}
+)
+# File path in the storage account
+file_path = "dbfs:/mnt/test/dbo.accounts.csv"
+
+
+# Load CSV into a DataFrame
+df = spark.read.format("csv").option("header", "true").load(file_path)
+
+# Display the DataFrame
+df.show()
+from pyspark.sql.functions import col, when, count
+
+# Identify columns with all null or empty values
+non_empty_columns = [
+    column for column in df.columns 
+    if df.filter((col(column).isNotNull()) & (col(column) != "")).count() > 0
+]
+
+# Select only non-empty columns
+df_cleaned = df.select(*non_empty_columns)
+
+# Show the cleaned DataFrame
+df_cleaned.show()
+# Save the DataFrame
+output_path = "/mnt/test/temp_dir"
+final_output = "/mnt/test/cleaned_data/account.csv"
+
+df_cleaned.coalesce(1).write.format("csv").option("header", "true").mode("overwrite").save(output_path)
+
+# Use dbutils to move and rename
+files = dbutils.fs.ls(output_path)
+csv_file = [f.path for f in files if f.name.endswith(".csv")][0]  # Get the CSV file path
+dbutils.fs.mv(csv_file, final_output)  # Rename and move to desired location
+
+# Optionally remove the temporary directory
+dbutils.fs.rm(output_path, True)
+dbutils.fs.unmount(f"/mnt/{container_name}")
