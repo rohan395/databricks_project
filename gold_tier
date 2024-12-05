@@ -1,0 +1,33 @@
+# Replace with your storage account and SAS token details
+storage_account_name = "test1244"
+sas_token = "sv=2022-11-02&ss=bfqt&srt=sco&sp=rwdlacupyx&se=2024-12-26T20:05:28Z&st=2024-12-04T12:05:28Z&spr=https,http&sig=lJSVQOYvWg5r%2BYzSDpzz8DheOybedXeTY5EzVO57OkI%3D"
+container_name = "test"
+
+# Mount the storage account to Databricks
+dbutils.fs.mount(
+    source=f"wasbs://{container_name}@{storage_account_name}.blob.core.windows.net",
+    mount_point=f"/mnt/{container_name}",
+    extra_configs={f"fs.azure.sas.{container_name}.{storage_account_name}.blob.core.windows.net": sas_token}
+)
+# File path in the storage account
+file_path = "dbfs:/mnt/test/cleaned_data/account.csv"
+
+
+# Load CSV into a DataFrame
+df = spark.read.format("csv").option("header", "true").load(file_path)
+
+# Display the DataFrame
+df.show()
+# Remove duplicate rows
+df_cleaned = df.dropDuplicates()
+
+# Display the cleaned DataFrame
+df_cleaned.show()
+# Define the output path
+output_path = "dbfs:/mnt/test/cleaned_data/account_cleaned.csv"
+
+# Save the cleaned DataFrame as a new CSV
+df_cleaned.write.format("csv").option("header", "true").mode("overwrite").save(output_path)
+
+print(f"Cleaned data saved at: {output_path}")
+dbutils.fs.unmount(f"/mnt/{container_name}")
